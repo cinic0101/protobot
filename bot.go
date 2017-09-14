@@ -2,18 +2,44 @@ package main
 
 import (
 	"fmt"
-	"github.com/julienschmidt/httprouter"
-	"net/http"
 	"log"
+	"os"
+
+	"github.com/nlopes/slack"
 )
 
-func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	fmt.Fprint(w, "Welcome!\n" + r.URL.Query().Get("cmd"))
-}
+func main()  {
+	token := os.Getenv("slack-bot-token")
 
-func main() {
-	router := httprouter.New()
-	router.GET("/", Index)
+	if token == "" {
+		fmt.Println("[ERROR] No Environment variable \"token\". ")
+		return
+	}
 
-	log.Fatal(http.ListenAndServe(":8080", router))
+	api := slack.New(token)
+	logger := log.New(os.Stdout, "slack-bot: ", log.Lshortfile|log.LstdFlags)
+	slack.SetLogger(logger)
+	api.SetDebug(true)
+
+	rtm := api.NewRTM()
+	go rtm.ManageConnection()
+
+	for msg := range rtm.IncomingEvents {
+		switch ev := msg.Data.(type) {
+
+		case *slack.MessageEvent:
+			if ev.BotID == "" {
+				params := slack.PostMessageParameters{
+					AsUser: true,
+				}
+				attachment := slack.Attachment{
+					Text: ev.Text,
+				}
+				params.Attachments = []slack.Attachment{attachment}
+				api.PostMessage(ev.Channel, "Response", params)
+			}
+
+		}
+	}
+	
 }
